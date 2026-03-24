@@ -16,93 +16,92 @@ public class Smart_elytraClient implements ClientModInitializer {
 
     private static KeyBinding elytraKey;
 
+    // Variablen für den verzögerten Swap
+    private int swapStep = 0;
+    private int targetInvSlot = -1;
+    private final int armorChestSlot = 6;
+
     @Override
     public void onInitializeClient() {
-        // Register the keybinding in the 'MISC' category
-        elytraKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.swap_elytra", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G, KeyBinding.Category.MISC));
+        elytraKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.swap_elytra",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_G,
+                KeyBinding.Category.MISC
+        ));
 
-
-        // Register a client tick event to check if the key was pressed
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (elytraKey.wasPressed()) {
-                handleElytraSwap(client);
+            if (client.player == null) return;
+
+            // Start des Swaps
+            while (elytraKey.wasPressed() && swapStep == 0) {
+                prepareSwap(client);
+            }
+
+            // Die 3-Tick Logik
+            if (swapStep > 0) {
+                processSwap(client);
             }
         });
     }
 
-    /**
-     * Handles the logic for swapping between an Elytra and a chestplate.
-     *
-     * @param client The Minecraft client instance.
-     */
-    private void handleElytraSwap(MinecraftClient client) {
-        if (client.player == null || client.interactionManager == null) return;
-
-        // Index 6 is the chest slot in the PlayerScreenHandler
-        int armorChestSlot = 6;
+    private void prepareSwap(MinecraftClient client) {
         ItemStack currentChest = client.player.getEquippedStack(EquipmentSlot.CHEST);
+        int foundSlot = -1;
 
-        // Case A: Elytra is equipped -> Search for the best available chestplate in the inventory.
         if (currentChest.isOf(Items.ELYTRA)) {
-            int bestSlot = -1;
-            // Iterate through the player's inventory to find a chestplate.
             for (int i = 0; i < 36; i++) {
                 if (isChestplate(client.player.getInventory().getStack(i))) {
-                    bestSlot = i;
-                    break; // Found a chestplate, no need to search further.
+                    foundSlot = i;
+                    break;
                 }
             }
-            // If a chestplate is found, execute the swap.
-            if (bestSlot != -1) {
-                executeSwap(client, bestSlot, armorChestSlot);
-            }
-        }
-        // Case B: A chestplate is equipped -> Search for an Elytra in the inventory.
-        else {
-            int elytraSlot = -1;
-            // Iterate through the player's inventory to find an Elytra.
+        } else {
             for (int i = 0; i < 36; i++) {
                 if (client.player.getInventory().getStack(i).isOf(Items.ELYTRA)) {
-                    elytraSlot = i;
-                    break; // Found an Elytra, no need to search further.
+                    foundSlot = i;
+                    break;
                 }
             }
-            // If an Elytra is found, execute the swap.
-            if (elytraSlot != -1) {
-                executeSwap(client, elytraSlot, armorChestSlot);
-            }
+        }
+
+        if (foundSlot != -1) {
+            // Mappe Hotbar (0-8) auf ScreenHandler Slots (36-44)
+            this.targetInvSlot = foundSlot < 9 ? foundSlot + 36 : foundSlot;
+            this.swapStep = 1; // Starte den Prozess
         }
     }
 
-    /**
-     * Executes the inventory clicks to swap an item from the inventory with the equipped chest item.
-     *
-     * @param client    The Minecraft client instance.
-     * @param invSlot   The inventory slot of the item to swap.
-     * @param armorSlot The armor slot (always the chest slot in this case).
-     */
-    private void executeSwap(MinecraftClient client, int invSlot, int armorSlot) {
-        // Map the inventory slot to the correct sync ID for the clickSlot method.
-        // Hotbar slots (0-8) are mapped to 36-44, while main inventory slots (9-35) are mapped to 9-35.
-        int syncInvSlot = invSlot < 9 ? invSlot + 36 : invSlot;
+    private void processSwap(MinecraftClient client) {
+        if (client.interactionManager == null || client.player == null) {
+            swapStep = 0;
+            return;
+        }
 
-        // 1. Click: Pick up the item from the inventory slot onto the cursor.
-        client.interactionManager.clickSlot(client.player.currentScreenHandler.syncId, syncInvSlot, 0, SlotActionType.PICKUP, client.player);
+        int syncId = client.player.currentScreenHandler.syncId;
 
-        // 2. Click: Click on the armor slot. This swaps the item on the cursor with the equipped item.
-        client.interactionManager.clickSlot(client.player.currentScreenHandler.syncId, armorSlot, 0, SlotActionType.PICKUP, client.player);
+        switch (swapStep) {
+            case 1: // Tick 1: Item aus Inventar auf den Cursor nehmen
+                client.interactionManager.clickSlot(syncId, targetInvSlot, 0, SlotActionType.PICKUP, client.player);
+                swapStep = 2;
+                break;
 
-        // 3. Click: Place the previously equipped item (now on the cursor) back into the now-empty inventory slot.
-        client.interactionManager.clickSlot(client.player.currentScreenHandler.syncId, syncInvSlot, 0, SlotActionType.PICKUP, client.player);
+            case 2: // Tick 2: Item in den Rüstungsslot legen (tauscht mit altem Item)
+                client.interactionManager.clickSlot(syncId, armorChestSlot, 0, SlotActionType.PICKUP, client.player);
+                swapStep = 3;
+                break;
+
+            case 3: // Tick 3: Altes Item zurück ins Inventar legen
+                client.interactionManager.clickSlot(syncId, targetInvSlot, 0, SlotActionType.PICKUP, client.player);
+                swapStep = 0; // Fertig
+                targetInvSlot = -1;
+                break;
+        }
     }
 
-    /**
-     * Checks if a given ItemStack is a chestplate.
-     *
-     * @param stack The ItemStack to check.
-     * @return True if the ItemStack is a chestplate, false otherwise.
-     */
     private boolean isChestplate(ItemStack stack) {
-        return stack.isOf(Items.NETHERITE_CHESTPLATE) || stack.isOf(Items.DIAMOND_CHESTPLATE) || stack.isOf(Items.IRON_CHESTPLATE) || stack.isOf(Items.GOLDEN_CHESTPLATE) || stack.isOf(Items.CHAINMAIL_CHESTPLATE) || stack.isOf(Items.LEATHER_CHESTPLATE);
+        return stack.isOf(Items.NETHERITE_CHESTPLATE) || stack.isOf(Items.DIAMOND_CHESTPLATE) ||
+                stack.isOf(Items.IRON_CHESTPLATE) || stack.isOf(Items.GOLDEN_CHESTPLATE) ||
+                stack.isOf(Items.CHAINMAIL_CHESTPLATE) || stack.isOf(Items.LEATHER_CHESTPLATE);
     }
 }
