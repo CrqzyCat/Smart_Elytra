@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "smart_elytra",
+  "version": "${version}",
+  "name": "Smart_Elytra",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/smart_elytra/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-datagen": [
+      "me.smart_elytra.smart_elytra.client.Smart_elytraDataGenerator"
+    ],
+    "client": [
+      "me.smart_elytra.smart_elytra.client.Smart_elytraClient"
+    ],
+    "main": [
+      "me.smart_elytra.smart_elytra.Smart_elytra"
+    ]
+  },
+  "mixins": [
+    "smart_elytra.mixins.json",
+    {
+      "config": "smart_elytra.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
