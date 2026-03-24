@@ -18,6 +18,7 @@ public class Smart_elytraClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Keybinding im MISC-Stil registrieren
         elytraKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.swap_elytra",
                 InputUtil.Type.KEYSYM,
@@ -35,43 +36,52 @@ public class Smart_elytraClient implements ClientModInitializer {
     private void handleElytraSwap(MinecraftClient client) {
         if (client.player == null || client.interactionManager == null) return;
 
+        // Index 6 ist der Chest-Slot im PlayerScreenHandler
+        int armorChestSlot = 6;
         ItemStack currentChest = client.player.getEquippedStack(EquipmentSlot.CHEST);
 
-        // Elytra → beste Chestplate (einfach feste Reihenfolge)
+        // Fall A: Elytra ist an -> Suche beste Chestplate
         if (currentChest.isOf(Items.ELYTRA)) {
             int bestSlot = -1;
-
             for (int i = 0; i < 36; i++) {
-                ItemStack stack = client.player.getInventory().getStack(i);
-
-                if (isChestplate(stack)) {
+                if (isChestplate(client.player.getInventory().getStack(i))) {
                     bestSlot = i;
-                    break; // erste gefundene nehmen
+                    break;
                 }
             }
-
             if (bestSlot != -1) {
-                quickEquip(client, bestSlot);
+                executeSwap(client, bestSlot, armorChestSlot);
             }
         }
-        // Rüstung → Elytra
+        // Fall B: Chestplate ist an -> Suche Elytra
         else {
             int elytraSlot = -1;
-
             for (int i = 0; i < 36; i++) {
                 if (client.player.getInventory().getStack(i).isOf(Items.ELYTRA)) {
                     elytraSlot = i;
                     break;
                 }
             }
-
             if (elytraSlot != -1) {
-                quickEquip(client, elytraSlot);
+                executeSwap(client, elytraSlot, armorChestSlot);
             }
         }
     }
 
-    // ✅ KEIN ArmorItem nötig
+    private void executeSwap(MinecraftClient client, int invSlot, int armorSlot) {
+        // Mapping für Hotbar vs. Inventar
+        int syncInvSlot = invSlot < 9 ? invSlot + 36 : invSlot;
+
+        // 1. Klick: Item aus dem Inventar auf den Cursor nehmen
+        client.interactionManager.clickSlot(client.player.currentScreenHandler.syncId, syncInvSlot, 0, SlotActionType.PICKUP, client.player);
+
+        // 2. Klick: Auf den Rüstungsslot klicken (tauscht Cursor-Item mit angelegtem Item)
+        client.interactionManager.clickSlot(client.player.currentScreenHandler.syncId, armorSlot, 0, SlotActionType.PICKUP, client.player);
+
+        // 3. Klick: Das alte Item (jetzt am Cursor) zurück in den nun leeren Inventar-Slot legen
+        client.interactionManager.clickSlot(client.player.currentScreenHandler.syncId, syncInvSlot, 0, SlotActionType.PICKUP, client.player);
+    }
+
     private boolean isChestplate(ItemStack stack) {
         return stack.isOf(Items.NETHERITE_CHESTPLATE)
                 || stack.isOf(Items.DIAMOND_CHESTPLATE)
@@ -79,17 +89,5 @@ public class Smart_elytraClient implements ClientModInitializer {
                 || stack.isOf(Items.GOLDEN_CHESTPLATE)
                 || stack.isOf(Items.CHAINMAIL_CHESTPLATE)
                 || stack.isOf(Items.LEATHER_CHESTPLATE);
-    }
-
-    private void quickEquip(MinecraftClient client, int invSlot) {
-        int syncSlot = invSlot < 9 ? invSlot + 36 : invSlot;
-
-        client.interactionManager.clickSlot(
-                client.player.currentScreenHandler.syncId,
-                syncSlot,
-                0,
-                SlotActionType.QUICK_MOVE,
-                client.player
-        );
     }
 }
