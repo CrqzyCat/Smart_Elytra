@@ -9,17 +9,16 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
 public class Smart_elytraClient implements ClientModInitializer {
 
     private static KeyBinding elytraKey;
 
-    // Variablen für den verzögerten Swap
     private int swapStep = 0;
-    private int targetInvSlot = -1;
-    private final int armorChestSlot = 6;
+    private int originalSlot = -1;
+    private int targetHotbarSlot = -1;
 
     @Override
     public void onInitializeClient() {
@@ -33,31 +32,32 @@ public class Smart_elytraClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null) return;
 
-            // Start des Swaps
+            // Start-Trigger
             while (elytraKey.wasPressed() && swapStep == 0) {
-                prepareSwap(client);
+                startHotbarSwap(client);
             }
 
-            // Die 3-Tick Logik
+            // 3-Tick Ablauf
             if (swapStep > 0) {
-                processSwap(client);
+                tickHotbarSwap(client);
             }
         });
     }
 
-    private void prepareSwap(MinecraftClient client) {
+    private void startHotbarSwap(MinecraftClient client) {
         ItemStack currentChest = client.player.getEquippedStack(EquipmentSlot.CHEST);
         int foundSlot = -1;
 
+        // Suche nur in der Hotbar (0-8)
         if (currentChest.isOf(Items.ELYTRA)) {
-            for (int i = 0; i < 36; i++) {
+            for (int i = 0; i < 9; i++) {
                 if (isChestplate(client.player.getInventory().getStack(i))) {
                     foundSlot = i;
                     break;
                 }
             }
         } else {
-            for (int i = 0; i < 36; i++) {
+            for (int i = 0; i < 9; i++) {
                 if (client.player.getInventory().getStack(i).isOf(Items.ELYTRA)) {
                     foundSlot = i;
                     break;
@@ -66,35 +66,30 @@ public class Smart_elytraClient implements ClientModInitializer {
         }
 
         if (foundSlot != -1) {
-            // Mappe Hotbar (0-8) auf ScreenHandler Slots (36-44)
-            this.targetInvSlot = foundSlot < 9 ? foundSlot + 36 : foundSlot;
-            this.swapStep = 1; // Starte den Prozess
+            this.originalSlot = client.player.getInventory().getSelectedSlot();
+            this.targetHotbarSlot = foundSlot;
+            this.swapStep = 1;
         }
     }
 
-    private void processSwap(MinecraftClient client) {
-        if (client.interactionManager == null || client.player == null) {
-            swapStep = 0;
-            return;
-        }
-
-        int syncId = client.player.currentScreenHandler.syncId;
-
+    private void tickHotbarSwap(MinecraftClient client) {
         switch (swapStep) {
-            case 1: // Tick 1: Item aus Inventar auf den Cursor nehmen
-                client.interactionManager.clickSlot(syncId, targetInvSlot, 0, SlotActionType.PICKUP, client.player);
+            case 1: // Tick 1: Gehe zum Slot
+                client.player.getInventory().setSelectedSlot(targetHotbarSlot);
                 swapStep = 2;
                 break;
 
-            case 2: // Tick 2: Item in den Rüstungsslot legen (tauscht mit altem Item)
-                client.interactionManager.clickSlot(syncId, armorChestSlot, 0, SlotActionType.PICKUP, client.player);
+            case 2: // Tick 2: Rechtsklick zum Ausrüsten
+                client.interactionManager.interactItem(client.player, Hand.MAIN_HAND);
                 swapStep = 3;
                 break;
 
-            case 3: // Tick 3: Altes Item zurück ins Inventar legen
-                client.interactionManager.clickSlot(syncId, targetInvSlot, 0, SlotActionType.PICKUP, client.player);
-                swapStep = 0; // Fertig
-                targetInvSlot = -1;
+            case 3: // Tick 3: Zurück zum alten Slot
+                client.player.getInventory().setSelectedSlot(originalSlot);
+                // Reset
+                swapStep = 0;
+                originalSlot = -1;
+                targetHotbarSlot = -1;
                 break;
         }
     }
