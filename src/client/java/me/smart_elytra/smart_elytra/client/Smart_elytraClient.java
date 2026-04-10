@@ -49,7 +49,7 @@ public class Smart_elytraClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         elytraKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                "key.swap_elytra",
+                "Swap Elytra/Chestplate",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_G,
                 KeyBinding.Category.MISC
